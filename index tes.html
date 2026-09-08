@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tapak Hayati — Pemantauan Keanekaragaman Hayati</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --ink:#1E2A22;
+    --ink-soft:#5B6259;
+    --paper:#EFEDE2;
+    --paper-2:#F8F7F0;
+    --line:#CBC6B4;
+    --moss:#3F5D3A;
+    --moss-dark:#2C4327;
+    --ochre:#B97F27;
+    --rust:#8B4A3C;
+    --white:#FEFDF9;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Public Sans', sans-serif;
+    font-size:15px;
+    line-height:1.5;
+  }
+  h1,h2,h3{
+    font-family:'Fraunces', serif;
+    margin:0;
+    color:var(--ink);
+    font-weight:600;
+  }
+  button{font-family:inherit;}
+  :focus-visible{outline:2px solid var(--ochre); outline-offset:2px;}
+
+  /* ---------- Topbar ---------- */
+  .topbar{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    padding:18px 28px;
+    border-bottom:1px solid var(--line);
+    background:var(--paper-2);
+  }
+  .brand{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;}
+  .brand h1{font-size:26px; letter-spacing:0.2px;}
+  .brand p{margin:0; color:var(--ink-soft); font-size:13.5px; max-width:520px;}
+  .mode-badge{
+    display:inline-block; margin-top:6px; font-size:11.5px; font-weight:600;
+    padding:2px 10px; border-radius:20px; border:1px solid var(--line); color:var(--ink-soft);
+  }
+  .mode-badge.cloud{color:var(--moss-dark); border-color:var(--moss); background:rgba(63,93,58,0.08);}
+  .stats{display:flex; gap:10px; flex-wrap:wrap;}
+  .stat{
+    border:1px solid var(--line);
+    background:var(--white);
+    border-radius:8px;
+    padding:8px 14px;
+    text-align:center;
+    min-width:96px;
+  }
+  .stat b{display:block; font-family:'Fraunces',serif; font-size:20px; color:var(--moss-dark);}
+  .stat span{font-size:11.5px; color:var(--ink-soft);}
+
+  /* ---------- Layout ---------- */
+  .layout{
+    display:grid;
+    grid-template-columns:380px 1fr;
+    gap:0;
+    align-items:stretch;
+  }
+  aside.panel-col{
+    border-right:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    max-height:calc(100vh - 90px);
+  }
+  .panel{
+    padding:18px 20px;
+  }
+  .panel + .panel{border-top:1px solid var(--line);}
+  .panel h2{font-size:17px; margin-bottom:12px; padding-left:10px; border-left:3px solid var(--ochre);}
+  .scroll-panel{overflow-y:auto; flex:1;}
+
+  /* ---------- Form ---------- */
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:13px; color:var(--ink-soft); margin-bottom:4px;}
+  input[type=text], textarea, select{
+    width:100%;
+    padding:9px 10px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:var(--white);
+    color:var(--ink);
+    font-family:inherit;
+    font-size:14px;
+  }
+  textarea{resize:vertical; min-height:56px;}
+  .loc-row{display:flex; gap:8px; flex-wrap:wrap;}
+  .btn{
+    border-radius:6px;
+    padding:8px 14px;
+    font-size:13.5px;
+    font-weight:600;
+    cursor:pointer;
+    border:1px solid var(--moss);
+    background:transparent;
+    color:var(--moss-dark);
+    transition:background .15s ease, color .15s ease;
+  }
+  .btn:hover{background:rgba(63,93,58,0.08);}
+  .btn.primary{background:var(--moss); color:var(--white); border-color:var(--moss);}
+  .btn.primary:hover{background:var(--moss-dark);}
+  .btn.primary:disabled{opacity:0.45; cursor:not-allowed;}
+  .btn.primary:disabled:hover{background:var(--moss);}
+  .btn.active{background:var(--ochre); border-color:var(--ochre); color:var(--white);}
+  .btn-text{background:none; border:none; color:var(--rust); font-size:12.5px; cursor:pointer; padding:2px 0; text-decoration:underline;}
+  .loc-status{font-size:12.5px; color:var(--moss-dark); margin-top:6px;}
+  .loc-status.empty{color:var(--ink-soft); font-style:italic;}
+  .error-msg{color:var(--rust); font-size:12.5px; margin-top:6px; display:none;}
+  .photo-preview{margin-top:8px;}
+  .photo-preview img{max-width:100%; max-height:120px; border-radius:6px; border:1px solid var(--line); display:block;}
+  .submit-row{margin-top:14px; display:flex; justify-content:flex-end; align-items:center; gap:10px;}
+  .saving-note{font-size:12px; color:var(--ink-soft); font-style:italic;}
+
+  /* ---------- Observation list ---------- */
+  .obs-item{
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:10px 12px;
+    margin-bottom:10px;
+    background:var(--white);
+    cursor:pointer;
+  }
+  .obs-item:hover{border-color:var(--moss);}
+  .obs-item-top{display:flex; justify-content:space-between; gap:8px; align-items:baseline;}
+  .obs-item h3{font-size:14.5px;}
+  .obs-item time{font-size:11px; color:var(--ink-soft); white-space:nowrap;}
+  .obs-item p{margin:4px 0 6px; font-size:13px; color:var(--ink-soft);}
+  .obs-item .row-bottom{display:flex; justify-content:space-between; align-items:center;}
+  .obs-thumb{width:100%; max-height:100px; object-fit:cover; border-radius:6px; margin-top:6px;}
+  .empty-note{color:var(--ink-soft); font-size:13px; font-style:italic; padding:8px 0;}
+
+  /* ---------- Map area ---------- */
+  .map-col{display:flex; flex-direction:column;}
+  .map-wrap{position:relative; flex:1; min-height:420px;}
+  #map{position:absolute; inset:0;}
+  .map-controls{
+    position:absolute; top:12px; right:12px; z-index:500;
+    background:rgba(248,247,240,0.95);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:10px 12px;
+    font-size:12.5px;
+    display:flex; flex-direction:column; gap:6px;
+    max-width:190px;
+  }
+  .map-controls label{display:flex; align-items:center; gap:6px; cursor:pointer;}
+  .legend{
+    position:absolute; bottom:12px; left:12px; z-index:500;
+    background:rgba(248,247,240,0.95);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:10px 12px;
+    font-size:12px;
+  }
+  .legend-row{display:flex; align-items:center; gap:6px; margin-top:4px;}
+  .legend-row:first-child{margin-top:0;}
+  .dot{width:10px; height:10px; border-radius:50%; display:inline-block;}
+  .pending-marker span{
+    display:block; width:16px; height:16px; border-radius:50%;
+    background:var(--ochre); border:3px solid white; box-shadow:0 0 0 2px var(--ink);
+  }
+
+  /* ---------- Region table ---------- */
+  .region-panel{border-top:1px solid var(--line); padding:18px 28px;}
+  .region-head{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;}
+  .region-head h2{border:none; padding:0;}
+  .region-head .field{margin:0; width:200px;}
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  thead th{text-align:left; color:var(--ink-soft); font-weight:600; font-size:12px; padding:6px 10px; border-bottom:1px solid var(--line);}
+  tbody td{padding:8px 10px; border-bottom:1px solid var(--line);}
+  tbody tr{cursor:pointer;}
+  tbody tr:hover{background:var(--paper-2);}
+  .badge{
+    display:inline-block; padding:2px 10px; border-radius:20px; font-size:12px; font-weight:600; color:var(--white);
+  }
+  .badge.tinggi{background:var(--moss);}
+  .badge.sedang{background:var(--ochre);}
+  .badge.rendah{background:var(--rust);}
+
+  footer{padding:14px 28px; color:var(--ink-soft); font-size:12px; border-top:1px solid var(--line);}
+
+  @media (max-width: 880px){
+    .layout{grid-template-columns:1fr;}
+    aside.panel-col{border-right:none; border-bottom:1px solid var(--line); max-height:none;}
+    .map-wrap{min-height:360px;}
+    .region-head .field{width:100%;}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>Tapak Hayati</h1>
+    <p>Catat spesies yang kamu temui, tandai lokasinya di peta, lalu lihat kawasan mana yang tergolong kaya dan mana yang masih minim data keanekaragaman hayati.</p>
+    <span class="mode-badge" id="modeBadge">Memuat…</span>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="statSpecies">0</b><span>spesies tercatat</span></div>
+    <div class="stat"><b id="statObs">0</b><span>pengamatan</span></div>
+    <div class="stat"><b id="statRich">0</b><span>kawasan kaya</span></div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="panel-col">
+    <div class="panel">
+      <h2>Catat pengamatan</h2>
+      <form id="obsForm">
+        <div class="field">
+          <label for="speciesInput">Nama spesies</label>
+          <input type="text" id="speciesInput" placeholder="misalnya: Elang Jawa, atau nama lokal jika belum tahu nama ilmiah">
+        </div>
+        <div class="field">
+          <label for="noteInput">Catatan (opsional)</label>
+          <textarea id="noteInput" placeholder="Habitat, perilaku, jumlah individu, kondisi cuaca, dll."></textarea>
+        </div>
+        <div class="field">
+          <label for="photoInput">Foto (opsional)</label>
+          <input type="file" id="photoInput" accept="image/*">
+          <div class="photo-preview" id="photoPreview"></div>
+        </div>
+        <div class="field">
+          <label>Lokasi</label>
+          <div class="loc-row">
+            <button type="button" class="btn" id="pickBtn">Pilih titik di peta</button>
+            <button type="button" class="btn" id="geoBtn">Gunakan lokasi saya</button>
+          </div>
+          <div class="loc-status empty" id="locStatus">Belum ada lokasi dipilih</div>
+        </div>
+        <div class="error-msg" id="formError"></div>
+        <div class="submit-row">
+          <span class="saving-note" id="savingNote"></span>
+          <button type="submit" class="btn primary" id="submitBtn">Simpan pengamatan</button>
+        </div>
+      </form>
+    </div>
+    <div class="panel scroll-panel">
+      <h2>Pengamatan terbaru</h2>
+      <div id="obsList"></div>
+    </div>
+  </aside>
+
+  <div class="map-col">
+    <div class="map-wrap">
+      <div id="map"></div>
+      <div class="map-controls">
+        <label><input type="checkbox" id="layerPoints" checked> Titik pengamatan</label>
+        <label><input type="checkbox" id="layerRegions" checked> Kawasan (agregat)</label>
+        <div class="field" style="margin-top:2px;">
+          <label for="gridSize" style="margin-bottom:2px;">Ukuran kawasan</label>
+          <select id="gridSize">
+            <option value="0.02">Detail (~2 km)</option>
+            <option value="0.05" selected>Sedang (~5 km)</option>
+            <option value="0.1">Luas (~11 km)</option>
+          </select>
+        </div>
+      </div>
+      <div class="legend">
+        <div class="legend-row"><span class="dot" style="background:#3F5D3A"></span> Tinggi — 5+ spesies unik</div>
+        <div class="legend-row"><span class="dot" style="background:#B97F27"></span> Sedang — 2–4 spesies unik</div>
+        <div class="legend-row"><span class="dot" style="background:#8B4A3C"></span> Rendah — 1 spesies / data sedikit</div>
+      </div>
+    </div>
+
+    <div class="region-panel">
+      <div class="region-head">
+        <h2>Ringkasan kawasan</h2>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr><th>Kawasan (pusat koordinat)</th><th>Spesies unik</th><th>Pengamatan</th><th>Kategori</th></tr>
+          </thead>
+          <tbody id="regionTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer id="modeFooter">
+  Memuat mode penyimpanan…
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* =====================================================================
+     KONFIGURASI MODE BERSAMA (opsional)
+     Isi dua nilai di bawah dengan Project URL dan anon public key dari
+     Supabase (Settings -> API) untuk mengaktifkan mode "bersama" — data
+     yang kamu input akan terlihat oleh semua orang yang membuka situs
+     ini, dan sebaliknya. Selama masih nilai bawaan di bawah, situs
+     berjalan dalam mode lokal (localStorage per perangkat).
+     Lihat README.md untuk langkah setup lengkap.
+     ===================================================================== */
+  var SUPABASE_URL = 'YOUR-PROJECT-REF.supabase.co';
+  var SUPABASE_ANON_KEY = 'YOUR-ANON-PUBLIC-KEY';
+
+  var CLOUD_MODE = SUPABASE_URL.indexOf('YOUR-PROJECT-REF') === -1 &&
+                    SUPABASE_ANON_KEY.indexOf('YOUR-ANON-PUBLIC-KEY') === -1 &&
+                    !!window.supabase;
+
+  var supabaseClient = null;
+  if(CLOUD_MODE){
+    var url = SUPABASE_URL.indexOf('http') === 0 ? SUPABASE_URL : ('https://' + SUPABASE_URL);
+    supabaseClient = window.supabase.createClient(url, SUPABASE_ANON_KEY);
+  }
+
+  var modeBadge = document.getElementById('modeBadge');
+  var modeFooter = document.getElementById('modeFooter');
+  if(CLOUD_MODE){
+    modeBadge.textContent = 'Mode bersama — data terlihat oleh semua pengunjung';
+    modeBadge.classList.add('cloud');
+    modeFooter.textContent = 'Data disimpan di database bersama (Supabase) dan diperbarui langsung untuk semua orang yang membuka situs ini.';
+  } else {
+    modeBadge.textContent = 'Mode lokal — data hanya di perangkat ini';
+    modeFooter.textContent = 'Data disimpan secara lokal di peramban perangkat ini (localStorage). Lihat README.md untuk mengaktifkan mode bersama lewat Supabase.';
+  }
+
+  /* ---------------- Local storage fallback ---------------- */
+  var STORAGE_KEY = 'tapak-hayati-observations';
+  var memoryFallback = null;
+  function loadLocalObservations(){
+    try{
+      var raw = window.localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    }catch(e){
+      if(memoryFallback === null) memoryFallback = [];
+      return memoryFallback;
+    }
+  }
+  function saveLocalObservations(list){
+    try{
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    }catch(e){
+      memoryFallback = list;
+    }
+  }
+
+  var observations = [];
+
+  function mapRowToObs(row){
+    return {id:row.id, species:row.species, note:row.note || '', photo:row.photo || null,
+            lat:row.lat, lng:row.lng, time:row.created_at};
+  }
+
+  async function initObservations(){
+    if(CLOUD_MODE){
+      var res = await supabaseClient.from('observations').select('*').order('created_at', {ascending:true});
+      if(res.error){
+        console.warn('Gagal memuat dari Supabase, memakai data lokal.', res.error);
+        observations = loadLocalObservations();
+        return;
+      }
+      observations = res.data.map(mapRowToObs);
+      subscribeRealtime();
+    } else {
+      observations = loadLocalObservations();
+    }
+  }
+
+  function subscribeRealtime(){
+    supabaseClient.channel('observations-changes')
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'observations'}, function(payload){
+        var obs = mapRowToObs(payload.new);
+        if(!observations.some(function(o){ return o.id === obs.id; })){
+          observations.push(obs);
+          renderAll();
+        }
+      })
+      .on('postgres_changes', {event:'DELETE', schema:'public', table:'observations'}, function(payload){
+        observations = observations.filter(function(o){ return o.id !== payload.old.id; });
+        renderAll();
+      })
+      .subscribe();
+  }
+
+  async function addObservation(obs){
+    if(CLOUD_MODE){
+      var row = {id:obs.id, species:obs.species, note:obs.note, photo:obs.photo, lat:obs.lat, lng:obs.lng};
+      var res = await supabaseClient.from('observations').insert(row);
+      if(res.error){
+        showFormError('Gagal menyimpan ke database bersama: ' + res.error.message);
+        return false;
+      }
+    } else {
+      saveLocalObservations(observations.concat([obs]));
+    }
+    observations.push(obs);
+    renderAll();
+    return true;
+  }
+
+  async function removeObservation(id){
+    var confirmMsg = CLOUD_MODE
+      ? 'Hapus pengamatan ini? Karena mode bersama aktif, ini akan terhapus untuk semua orang.'
+      : 'Hapus pengamatan ini dari perangkat ini?';
+    if(!confirm(confirmMsg)) return;
+    if(CLOUD_MODE){
+      var res = await supabaseClient.from('observations').delete().eq('id', id);
+      if(res.error){ alert('Gagal menghapus: ' + res.error.message); return; }
+    } else {
+      saveLocalObservations(observations.filter(function(o){ return o.id !== id; }));
+    }
+    observations = observations.filter(function(o){ return o.id !== id; });
+    renderAll();
+  }
+  window.__deleteObservation = removeObservation;
+
+  /* ---------------- Map setup ---------------- */
+  var map = L.map('map', {zoomControl:true}).setView([-2.5, 118], 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+
+  var pointsLayer = L.layerGroup().addTo(map);
+  var regionsLayer = L.layerGroup().addTo(map);
+  var pendingMarker = null;
+
+  var pendingIcon = L.divIcon({className:'pending-marker', html:'<span></span>', iconSize:[18,18], iconAnchor:[9,9]});
+
+  var COLORS = {tinggi:'#3F5D3A', sedang:'#B97F27', rendah:'#8B4A3C'};
+
+  /* ---------------- Location picking ---------------- */
+  var pickMode = false;
+  var chosenLatLng = null;
+  var pickBtn = document.getElementById('pickBtn');
+  var geoBtn = document.getElementById('geoBtn');
+  var locStatus = document.getElementById('locStatus');
+
+  pickBtn.addEventListener('click', function(){
+    pickMode = !pickMode;
+    pickBtn.classList.toggle('active', pickMode);
+    pickBtn.textContent = pickMode ? 'Klik di peta untuk menandai…' : 'Pilih titik di peta';
+  });
+
+  geoBtn.addEventListener('click', function(){
+    if(!navigator.geolocation){
+      showFormError('Peramban ini tidak mendukung deteksi lokasi otomatis.');
+      return;
+    }
+    geoBtn.disabled = true;
+    geoBtn.textContent = 'Mendeteksi…';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      geoBtn.disabled = false;
+      geoBtn.textContent = 'Gunakan lokasi saya';
+      setChosenLocation(pos.coords.latitude, pos.coords.longitude);
+      map.setView([pos.coords.latitude, pos.coords.longitude], 13);
+    }, function(){
+      geoBtn.disabled = false;
+      geoBtn.textContent = 'Gunakan lokasi saya';
+      showFormError('Tidak dapat mengambil lokasi. Coba pilih titik langsung di peta.');
+    });
+  });
+
+  map.on('click', function(e){
+    if(!pickMode) return;
+    setChosenLocation(e.latlng.lat, e.latlng.lng);
+    pickMode = false;
+    pickBtn.classList.remove('active');
+    pickBtn.textContent = 'Pilih titik di peta';
+  });
+
+  function setChosenLocation(lat, lng){
+    chosenLatLng = {lat:lat, lng:lng};
+    locStatus.classList.remove('empty');
+    locStatus.innerHTML = 'Lokasi dipilih: ' + lat.toFixed(4) + ', ' + lng.toFixed(4) +
+      ' — <button type="button" class="btn-text" id="clearLocBtn">ubah</button>';
+    document.getElementById('clearLocBtn').addEventListener('click', function(){
+      chosenLatLng = null;
+      locStatus.classList.add('empty');
+      locStatus.textContent = 'Belum ada lokasi dipilih';
+      if(pendingMarker){ map.removeLayer(pendingMarker); pendingMarker = null; }
+    });
+    if(pendingMarker) map.removeLayer(pendingMarker);
+    pendingMarker = L.marker([lat,lng], {icon:pendingIcon, draggable:true}).addTo(map);
+    pendingMarker.on('dragend', function(){
+      var p = pendingMarker.getLatLng();
+      setChosenLocation(p.lat, p.lng);
+    });
+  }
+
+  /* ---------------- Photo handling ---------------- */
+  var photoInput = document.getElementById('photoInput');
+  var photoPreview = document.getElementById('photoPreview');
+  var pendingPhotoData = null;
+
+  photoInput.addEventListener('change', function(){
+    var file = photoInput.files[0];
+    if(!file){ pendingPhotoData = null; photoPreview.innerHTML = ''; return; }
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      var img = new Image();
+      img.onload = function(){
+        var maxW = 420;
+        var scale = Math.min(1, maxW / img.width);
+        var canvas = document.createElement('canvas');
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        pendingPhotoData = canvas.toDataURL('image/jpeg', 0.6);
+        photoPreview.innerHTML = '<img src="' + pendingPhotoData + '" alt="Pratinjau foto">';
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  /* ---------------- Form submit ---------------- */
+  var form = document.getElementById('obsForm');
+  var speciesInput = document.getElementById('speciesInput');
+  var noteInput = document.getElementById('noteInput');
+  var formError = document.getElementById('formError');
+  var submitBtn = document.getElementById('submitBtn');
+  var savingNote = document.getElementById('savingNote');
+
+  function showFormError(msg){
+    formError.textContent = msg;
+    formError.style.display = 'block';
+  }
+  function clearFormError(){
+    formError.style.display = 'none';
+  }
+
+  form.addEventListener('submit', async function(e){
+    e.preventDefault();
+    clearFormError();
+    var species = speciesInput.value.trim();
+    if(!species){ showFormError('Isi nama spesies terlebih dahulu.'); return; }
+    if(!chosenLatLng){ showFormError('Pilih lokasi pengamatan di peta atau gunakan lokasi saat ini.'); return; }
+
+    var obs = {
+      id: 'obs_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+      species: species,
+      note: noteInput.value.trim(),
+      photo: pendingPhotoData,
+      lat: chosenLatLng.lat,
+      lng: chosenLatLng.lng,
+      time: new Date().toISOString()
+    };
+
+    submitBtn.disabled = true;
+    savingNote.textContent = 'Menyimpan…';
+    var ok = await addObservation(obs);
+    submitBtn.disabled = false;
+    savingNote.textContent = '';
+    if(!ok) return;
+
+    speciesInput.value = '';
+    noteInput.value = '';
+    photoInput.value = '';
+    pendingPhotoData = null;
+    photoPreview.innerHTML = '';
+    chosenLatLng = null;
+    locStatus.classList.add('empty');
+    locStatus.textContent = 'Belum ada lokasi dipilih';
+    if(pendingMarker){ map.removeLayer(pendingMarker); pendingMarker = null; }
+  });
+
+  /* ---------------- Grid / region logic ---------------- */
+  function getCellSize(){
+    return parseFloat(document.getElementById('gridSize').value);
+  }
+  function cellKeyFor(lat, lng, size){
+    var cx = Math.floor(lat / size);
+    var cy = Math.floor(lng / size);
+    return cx + '_' + cy;
+  }
+  function classify(uniqueCount){
+    if(uniqueCount >= 5) return 'tinggi';
+    if(uniqueCount >= 2) return 'sedang';
+    return 'rendah';
+  }
+  function computeRegions(){
+    var size = getCellSize();
+    var cells = {};
+    observations.forEach(function(o){
+      var key = cellKeyFor(o.lat, o.lng, size);
+      if(!cells[key]){
+        var cx = Math.floor(o.lat / size);
+        var cy = Math.floor(o.lng / size);
+        cells[key] = {
+          key:key,
+          centerLat: (cx + 0.5) * size,
+          centerLng: (cy + 0.5) * size,
+          species: new Set(),
+          obsCount: 0
+        };
+      }
+      cells[key].species.add(o.species.trim().toLowerCase());
+      cells[key].obsCount++;
+    });
+    var list = Object.keys(cells).map(function(k){
+      var c = cells[k];
+      return {
+        key:c.key,
+        centerLat:c.centerLat,
+        centerLng:c.centerLng,
+        uniqueSpecies:c.species.size,
+        obsCount:c.obsCount,
+        category:classify(c.species.size)
+      };
+    });
+    list.sort(function(a,b){ return b.uniqueSpecies - a.uniqueSpecies; });
+    return list;
+  }
+
+  /* ---------------- Rendering ---------------- */
+  var obsListEl = document.getElementById('obsList');
+  var regionTableBody = document.getElementById('regionTableBody');
+  var statSpecies = document.getElementById('statSpecies');
+  var statObs = document.getElementById('statObs');
+  var statRich = document.getElementById('statRich');
+  var layerPointsToggle = document.getElementById('layerPoints');
+  var layerRegionsToggle = document.getElementById('layerRegions');
+
+  function fmtDate(iso){
+    var d = new Date(iso);
+    return d.toLocaleDateString('id-ID', {day:'numeric', month:'short', year:'numeric'});
+  }
+
+  function renderList(){
+    if(observations.length === 0){
+      obsListEl.innerHTML = '<p class="empty-note">Belum ada pengamatan tercatat. Isi formulir di atas untuk memulai.</p>';
+      return;
+    }
+    var sorted = observations.slice().sort(function(a,b){ return new Date(b.time) - new Date(a.time); });
+    obsListEl.innerHTML = sorted.map(function(o){
+      return '<div class="obs-item" data-lat="'+o.lat+'" data-lng="'+o.lng+'">' +
+        '<div class="obs-item-top"><h3>'+escapeHtml(o.species)+'</h3><time>'+fmtDate(o.time)+'</time></div>' +
+        (o.note ? '<p>'+escapeHtml(o.note)+'</p>' : '') +
+        (o.photo ? '<img class="obs-thumb" src="'+o.photo+'" alt="Foto '+escapeHtml(o.species)+'">' : '') +
+        '<div class="row-bottom" style="margin-top:6px;">' +
+        '<span style="font-size:11.5px;color:var(--ink-soft);">'+o.lat.toFixed(3)+', '+o.lng.toFixed(3)+'</span>' +
+        '<button type="button" class="btn-text" onclick="window.__deleteObservation(\''+o.id+'\')">Hapus</button>' +
+        '</div></div>';
+    }).join('');
+
+    Array.prototype.forEach.call(obsListEl.querySelectorAll('.obs-item'), function(el){
+      el.addEventListener('click', function(ev){
+        if(ev.target.tagName === 'BUTTON') return;
+        var lat = parseFloat(el.getAttribute('data-lat'));
+        var lng = parseFloat(el.getAttribute('data-lng'));
+        map.setView([lat,lng], 14);
+      });
+    });
+  }
+
+  var regionLookupCache = {};
+
+  function renderMapLayers(regions){
+    pointsLayer.clearLayers();
+    regionsLayer.clearLayers();
+
+    if(layerPointsToggle.checked){
+      observations.forEach(function(o){
+        var size = getCellSize();
+        var key = cellKeyFor(o.lat, o.lng, size);
+        var category = regionLookupCache[key] || 'rendah';
+        var marker = L.circleMarker([o.lat, o.lng], {
+          radius:6, weight:1.5, color:'#fff', fillColor:COLORS[category], fillOpacity:0.9
+        });
+        var popupHtml = '<strong>'+escapeHtml(o.species)+'</strong><br>' +
+          (o.note ? escapeHtml(o.note)+'<br>' : '') +
+          (o.photo ? '<img src="'+o.photo+'" style="max-width:160px;border-radius:6px;margin-top:4px;display:block;">' : '') +
+          '<span style="font-size:11px;color:#5B6259;">'+fmtDate(o.time)+'</span>';
+        marker.bindPopup(popupHtml);
+        marker.addTo(pointsLayer);
+      });
+    }
+
+    if(layerRegionsToggle.checked){
+      var size2 = getCellSize();
+      var radiusMeters = size2 * 111000 / 2;
+      regions.forEach(function(r){
+        var circle = L.circle([r.centerLat, r.centerLng], {
+          radius: radiusMeters,
+          color: COLORS[r.category],
+          weight:1.5,
+          fillColor: COLORS[r.category],
+          fillOpacity:0.18
+        });
+        circle.bindPopup(
+          '<strong>Kawasan</strong><br>' +
+          r.uniqueSpecies + ' spesies unik dari ' + r.obsCount + ' pengamatan<br>' +
+          '<span class="badge ' + r.category + '" style="margin-top:4px;display:inline-block;">' + capitalize(r.category) + '</span>'
+        );
+        circle.addTo(regionsLayer);
+      });
+    }
+  }
+
+  function renderRegionTable(regions){
+    if(regions.length === 0){
+      regionTableBody.innerHTML = '<tr><td colspan="4" class="empty-note">Belum ada data untuk dianalisis.</td></tr>';
+      return;
+    }
+    regionTableBody.innerHTML = regions.map(function(r){
+      return '<tr data-lat="'+r.centerLat+'" data-lng="'+r.centerLng+'">' +
+        '<td>'+r.centerLat.toFixed(3)+', '+r.centerLng.toFixed(3)+'</td>' +
+        '<td>'+r.uniqueSpecies+'</td>' +
+        '<td>'+r.obsCount+'</td>' +
+        '<td><span class="badge '+r.category+'">'+capitalize(r.category)+'</span></td>' +
+        '</tr>';
+    }).join('');
+    Array.prototype.forEach.call(regionTableBody.querySelectorAll('tr[data-lat]'), function(row){
+      row.addEventListener('click', function(){
+        map.setView([parseFloat(row.getAttribute('data-lat')), parseFloat(row.getAttribute('data-lng'))], 12);
+      });
+    });
+  }
+
+  function renderStats(regions){
+    var uniqueAll = new Set(observations.map(function(o){ return o.species.trim().toLowerCase(); }));
+    statSpecies.textContent = uniqueAll.size;
+    statObs.textContent = observations.length;
+    statRich.textContent = regions.filter(function(r){ return r.category === 'tinggi'; }).length;
+  }
+
+  function capitalize(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
+  function escapeHtml(s){
+    var div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function renderAll(){
+    var regions = computeRegions();
+    regionLookupCache = {};
+    regions.forEach(function(r){ regionLookupCache[r.key] = r.category; });
+    renderList();
+    renderMapLayers(regions);
+    renderRegionTable(regions);
+    renderStats(regions);
+  }
+
+  document.getElementById('gridSize').addEventListener('change', renderAll);
+  layerPointsToggle.addEventListener('change', renderAll);
+  layerRegionsToggle.addEventListener('change', renderAll);
+
+  async function start(){
+    await initObservations();
+    renderAll();
+    setTimeout(function(){ map.invalidateSize(); }, 200);
+    window.addEventListener('resize', function(){ map.invalidateSize(); });
+  }
+  start();
+
+})();
+</script>
+</body>
+</html>
