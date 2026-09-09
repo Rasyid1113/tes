@@ -213,7 +213,7 @@
   <div class="brand">
     <h1>Tapak Hayati</h1>
     <p>Catat spesies yang kamu temui, tandai lokasinya di peta, lalu lihat kawasan mana yang tergolong kaya dan mana yang masih minim data keanekaragaman hayati.</p>
-    <span class="mode-badge" id="modeBadge">Memuat…</span>
+    <span class="mode-badge cloud" id="modeBadge">Mode Cloud Aktif — Tersinkronisasi via Firebase</span>
   </div>
   <div class="stats">
     <div class="stat"><b id="statSpecies">0</b><span>spesies tercatat</span></div>
@@ -300,139 +300,96 @@
 </div>
 
 <footer id="modeFooter">
-  Memuat mode penyimpanan…
+  Data disimpan dan disinkronisasikan secara realtime menggunakan Firebase Firestore.
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script>
-(function(){
-  "use strict";
 
-  /* =====================================================================
-     KONFIGURASI MODE BERSAMA (opsional)
-     Isi dua nilai di bawah dengan Project URL dan anon public key dari
-     Supabase (Settings -> API) untuk mengaktifkan mode "bersama" — data
-     yang kamu input akan terlihat oleh semua orang yang membuka situs
-     ini, dan sebaliknya. Selama masih nilai bawaan di bawah, situs
-     berjalan dalam mode lokal (localStorage per perangkat).
-     Lihat README.md untuk langkah setup lengkap.
-     ===================================================================== */
-  var SUPABASE_URL = 'https://fkrcesyvkbypiabnfwxu.supabase.co/rest/v1/';
-  var SUPABASE_ANON_KEY = 'YOUR-ANON-PUBLIC-KEY';
+<!-- MENGUBAH SCRIPT KE TYPE MODULE UNTUK FIREBASE v9+ -->
+<script type="module">
+  // 1. Import Firebase Core & Analytics
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-analytics.js";
+  
+  // 2. Import Firestore (Database)
+  import { 
+    getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy 
+  } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
-  var CLOUD_MODE = SUPABASE_URL.indexOf('https://fkrcesyvkbypiabnfwxu.supabase.co/rest/v1/') === -1 &&
-                    SUPABASE_ANON_KEY.indexOf('YOUR-ANON-PUBLIC-KEY') === -1 &&
-                    !!window.supabase;
+  // 3. Konfigurasi Firebase dari pengguna
+  const firebaseConfig = {
+    apiKey: "AIzaSyATuKNxfRH0lNsXf6E8IB-EHOetWdEMv1o",
+    authDomain: "biodiversity-monitoring-f7e2a.firebaseapp.com",
+    projectId: "biodiversity-monitoring-f7e2a",
+    storageBucket: "biodiversity-monitoring-f7e2a.firebasestorage.app",
+    messagingSenderId: "558022209345",
+    appId: "1:558022209345:web:58c97ddbe9bebbaea4bbc0",
+    measurementId: "G-F505NXB0C1"
+  };
 
-  var supabaseClient = null;
-  if(CLOUD_MODE){
-    var url = SUPABASE_URL.indexOf('http') === 0 ? SUPABASE_URL : ('https://' + SUPABASE_URL);
-    supabaseClient = window.supabase.createClient(url, SUPABASE_ANON_KEY);
+  // Inisialisasi Firebase & Firestore
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  const db = getFirestore(app);
+
+  let observations = [];
+
+  // Sinkronisasi data realtime dengan Firebase Firestore (menggantikan initObservations & subscribeRealtime sebelumnya)
+  function initObservations() {
+    const q = query(collection(db, "observations"), orderBy("time", "asc"));
+    onSnapshot(q, (snapshot) => {
+      observations = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        observations.push({
+          id: docSnap.id, // ID Dokumen Firestore
+          species: data.species,
+          note: data.note || '',
+          photo: data.photo || null,
+          lat: data.lat,
+          lng: data.lng,
+          time: data.time
+        });
+      });
+      renderAll();
+    }, (error) => {
+      console.error("Gagal mengambil data dari Firebase: ", error);
+      showFormError("Gagal terhubung ke database. Periksa koneksi Anda.");
+    });
   }
 
-  var modeBadge = document.getElementById('modeBadge');
-  var modeFooter = document.getElementById('modeFooter');
-  if(CLOUD_MODE){
-    modeBadge.textContent = 'Mode bersama — data terlihat oleh semua pengunjung';
-    modeBadge.classList.add('cloud');
-    modeFooter.textContent = 'Data disimpan di database bersama (Supabase) dan diperbarui langsung untuk semua orang yang membuka situs ini.';
-  } else {
-    modeBadge.textContent = 'Mode lokal — data hanya di perangkat ini';
-    modeFooter.textContent = 'Data disimpan secara lokal di peramban perangkat ini (localStorage). Lihat README.md untuk mengaktifkan mode bersama lewat Supabase.';
-  }
-
-  /* ---------------- Local storage fallback ---------------- */
-  var STORAGE_KEY = 'tapak-hayati-observations';
-  var memoryFallback = null;
-  function loadLocalObservations(){
-    try{
-      var raw = window.localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    }catch(e){
-      if(memoryFallback === null) memoryFallback = [];
-      return memoryFallback;
-    }
-  }
-  function saveLocalObservations(list){
-    try{
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-    }catch(e){
-      memoryFallback = list;
-    }
-  }
-
-  var observations = [];
-
-  function mapRowToObs(row){
-    return {id:row.id, species:row.species, note:row.note || '', photo:row.photo || null,
-            lat:row.lat, lng:row.lng, time:row.created_at};
-  }
-
-  async function initObservations(){
-    if(CLOUD_MODE){
-      var res = await supabaseClient.from('observations').select('*').order('created_at', {ascending:true});
-      if(res.error){
-        console.warn('Gagal memuat dari Supabase, memakai data lokal.', res.error);
-        observations = loadLocalObservations();
-        return;
-      }
-      observations = res.data.map(mapRowToObs);
-      subscribeRealtime();
-    } else {
-      observations = loadLocalObservations();
+  // Fungsi menyimpan data ke Firestore
+  async function addObservation(obs) {
+    try {
+      await addDoc(collection(db, "observations"), {
+        species: obs.species,
+        note: obs.note,
+        photo: obs.photo, // Berupa Base64 string dari Canvas
+        lat: obs.lat,
+        lng: obs.lng,
+        time: obs.time
+      });
+      return true;
+    } catch (e) {
+      showFormError('Gagal menyimpan ke Firebase: ' + e.message);
+      return false;
     }
   }
 
-  function subscribeRealtime(){
-    supabaseClient.channel('observations-changes')
-      .on('postgres_changes', {event:'INSERT', schema:'public', table:'observations'}, function(payload){
-        var obs = mapRowToObs(payload.new);
-        if(!observations.some(function(o){ return o.id === obs.id; })){
-          observations.push(obs);
-          renderAll();
-        }
-      })
-      .on('postgres_changes', {event:'DELETE', schema:'public', table:'observations'}, function(payload){
-        observations = observations.filter(function(o){ return o.id !== payload.old.id; });
-        renderAll();
-      })
-      .subscribe();
-  }
-
-  async function addObservation(obs){
-    if(CLOUD_MODE){
-      var row = {id:obs.id, species:obs.species, note:obs.note, photo:obs.photo, lat:obs.lat, lng:obs.lng};
-      var res = await supabaseClient.from('observations').insert(row);
-      if(res.error){
-        showFormError('Gagal menyimpan ke database bersama: ' + res.error.message);
-        return false;
-      }
-    } else {
-      saveLocalObservations(observations.concat([obs]));
+  // Fungsi menghapus data di Firestore
+  async function removeObservation(id) {
+    if (!confirm('Hapus pengamatan ini dari database (akan terhapus untuk semua pengguna)?')) return;
+    try {
+      await deleteDoc(doc(db, "observations", id));
+    } catch (e) {
+      alert('Gagal menghapus: ' + e.message);
     }
-    observations.push(obs);
-    renderAll();
-    return true;
   }
-
-  async function removeObservation(id){
-    var confirmMsg = CLOUD_MODE
-      ? 'Hapus pengamatan ini? Karena mode bersama aktif, ini akan terhapus untuk semua orang.'
-      : 'Hapus pengamatan ini dari perangkat ini?';
-    if(!confirm(confirmMsg)) return;
-    if(CLOUD_MODE){
-      var res = await supabaseClient.from('observations').delete().eq('id', id);
-      if(res.error){ alert('Gagal menghapus: ' + res.error.message); return; }
-    } else {
-      saveLocalObservations(observations.filter(function(o){ return o.id !== id; }));
-    }
-    observations = observations.filter(function(o){ return o.id !== id; });
-    renderAll();
-  }
+  
+  // Expose fungsi hapus ke Global/Window karena type="module" mengenkapsulasi fungsi
   window.__deleteObservation = removeObservation;
 
-  /* ---------------- Map setup ---------------- */
+  /* ---------------- Map setup (Sama seperti sebelumnya) ---------------- */
   var map = L.map('map', {zoomControl:true}).setView([-2.5, 118], 5);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
@@ -444,7 +401,6 @@
   var pendingMarker = null;
 
   var pendingIcon = L.divIcon({className:'pending-marker', html:'<span></span>', iconSize:[18,18], iconAnchor:[9,9]});
-
   var COLORS = {tinggi:'#3F5D3A', sedang:'#B97F27', rendah:'#8B4A3C'};
 
   /* ---------------- Location picking ---------------- */
@@ -557,13 +513,12 @@
     if(!chosenLatLng){ showFormError('Pilih lokasi pengamatan di peta atau gunakan lokasi saat ini.'); return; }
 
     var obs = {
-      id: 'obs_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
       species: species,
       note: noteInput.value.trim(),
       photo: pendingPhotoData,
       lat: chosenLatLng.lat,
       lng: chosenLatLng.lng,
-      time: new Date().toISOString()
+      time: new Date().toISOString() // Disimpan sebagai string ISO
     };
 
     submitBtn.disabled = true;
@@ -571,6 +526,7 @@
     var ok = await addObservation(obs);
     submitBtn.disabled = false;
     savingNote.textContent = '';
+    
     if(!ok) return;
 
     speciesInput.value = '';
@@ -765,15 +721,16 @@
   layerPointsToggle.addEventListener('change', renderAll);
   layerRegionsToggle.addEventListener('change', renderAll);
 
-  async function start(){
-    await initObservations();
-    renderAll();
+  // Fungsi Inisialisasi Mulai
+  function start(){
+    initObservations();
     setTimeout(function(){ map.invalidateSize(); }, 200);
     window.addEventListener('resize', function(){ map.invalidateSize(); });
   }
+  
+  // Jalankan Aplikasi
   start();
 
-})();
 </script>
 </body>
 </html>
