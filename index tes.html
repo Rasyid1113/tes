@@ -318,10 +318,10 @@
      berjalan dalam mode lokal (localStorage per perangkat).
      Lihat README.md untuk langkah setup lengkap.
      ===================================================================== */
-  var SUPABASE_URL = 'YOUR-PROJECT-REF.supabase.co';
+  var SUPABASE_URL = 'https://fkrcesyvkbypiabnfwxu.supabase.co/rest/v1/';
   var SUPABASE_ANON_KEY = 'YOUR-ANON-PUBLIC-KEY';
 
-  var CLOUD_MODE = SUPABASE_URL.indexOf('YOUR-PROJECT-REF') === -1 &&
+  var CLOUD_MODE = SUPABASE_URL.indexOf('https://fkrcesyvkbypiabnfwxu.supabase.co/rest/v1/') === -1 &&
                     SUPABASE_ANON_KEY.indexOf('YOUR-ANON-PUBLIC-KEY') === -1 &&
                     !!window.supabase;
 
